@@ -1,0 +1,74 @@
+cabal-version:   3.0
+name:            env
+version:         0.1.0.0
+license:         NONE
+author:          Joe
+maintainer:      joe@example.com
+build-type:      Simple
+
+common warnings
+    ghc-options: -Wall
+
+library lang
+    build-depends:    base, containers, mtl
+    exposed-modules:  Lang
+    hs-source-dirs:   lib
+    default-extensions: GADTs
+                      , DataKinds
+                      , TypeOperators
+                      , FlexibleInstances
+                      , FlexibleContexts
+                      , DeriveFunctor
+                      , MultiParamTypeClasses
+                      , GeneralizedNewtypeDeriving
+                      , ScopedTypeVariables
+                      , LambdaCase
+
+library debruijn
+    build-depends:    base, containers, mtl
+    exposed-modules:  Bruijn
+    hs-source-dirs:   lib
+    default-extensions: GADTs
+                      , DataKinds
+                      , TypeOperators
+                      , FlexibleInstances
+                      , FlexibleContexts
+                      , DeriveFunctor
+                      , MultiParamTypeClasses
+                      , GeneralizedNewtypeDeriving
+                      , ScopedTypeVariables
+                      , LambdaCase
+
+executable normal
+    import:           warnings
+    main-is:          Main.hs
+    build-depends:    base, lang, containers, mtl
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    default-extensions: GADTs
+                      , DataKinds
+                      , TypeOperators
+                      , FlexibleInstances
+                      , FlexibleContexts
+                      , DeriveFunctor
+                      , MultiParamTypeClasses
+                      , GeneralizedNewtypeDeriving
+                      , ScopedTypeVariables
+                      , LambdaCase
+
+executable modern
+    import:           warnings
+    main-is:          Modern.hs
+    build-depends:    base, debruijn, containers, mtl
+    hs-source-dirs:   src
+    default-language: Haskell2010
+    default-extensions: GADTs
+                      , DataKinds
+                      , TypeOperators
+                      , FlexibleInstances
+                      , FlexibleContexts
+                      , DeriveFunctor
+                      , MultiParamTypeClasses
+                      , GeneralizedNewtypeDeriving
+                      , ScopedTypeVariables
+                      , LambdaCase

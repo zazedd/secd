@@ -1,0 +1,125 @@
+\section{SECD Machine}
+\subsection{Introduction}
+The SECD machine was introduced in 1964 by Landin. It has a simple instruction set that operates
+on stacks. You can think about this instruction set as a virtual machine of sorts, if you translate
+your language into this instruction set, through a process called \textbf{compilation},
+then there is a standard way of running said instructions. Hopefully, given your compiled program is
+correct, the list of instructions is \textbf{interpreted}, producing the expected behaviour of the term written in your language.
+
+The list of instructions is just the first part, to \textbf{interpret} them, the SECD machine keeps 4 data structures in memory, 
+and sometimes another helper data structure to support function applications.
+
+\subsection{Data Structures}
+\subsubsection{S: Stack}
+The Stack holds intermediate results from our interpreting process. It is a list of \textbf{values}.
+It is also where our final output will be stored.
+
+The stack is a list of the \texttt{Val} data type:
+\begin{lstlisting}
+data Val
+  = VInt Int
+  | Addr Int -- corresponds to the position of either a variable or a function inside the Env
+\end{lstlisting}
+
+\subsubsection{E: Environment}
+The Environment associates the values that are bound to variables. It can be seen as a simple list of values, where the indexes are refer to the
+variables themselves.
+\subsubsection{C: Code}
+This is the list of instructions that we compiled previously, and are currently running.
+\subsubsection{D: Dump}
+The dump stores the contents of the other 3 registers temporarily, while a function is executing, for example.
+You can see these function calls as \textbf{detours} from the original execution. When they are finished, 
+we can pop the head of the Dump to go retrieve the main execution path.
+
+We will see later that we can combine the Stack and Dump into just one data structure.
+\subsubsection{Closures on a Store}
+Closures represent function applications that are yet to be processed. As environments are very dynamic and can change quickly, when creating a Closure, the current environment
+is captured inside of it. This makes sure the function has access to the unbounded variables it needs.
+
+Closures can appear on both the Stack and the Dump, but for this first implementation we will keep them in a separate place in memory,
+a Store.
+
+\subsection{Default Instructions}
+The default set of instructions is relatively small:
+\begin{lstlisting}
+data Instr
+  = LD Int -- loads the variable at the specified index 
+  | LDC Int -- loads an integer constant
+  | CLO [Instr] -- loads a function
+  | FIX [Instr] -- loads a recursive function
+  | AP -- applies a function to an argument
+  | RTN -- returns from function application
+  | IF [Instr] [Instr] -- tests a condition and selects one branch accordingly
+  | JOIN -- returns from whichever branch IF selected
+  | ADD -- adds two values
+  | SUB -- subtracts two values
+  | MUL -- multiplies two values
+  | HALT -- halts execution
+\end{lstlisting}
+
+\subsection{Compilation from \texttt{fun}}
+We define the compilation function $ \mathcal{C} $, with type $ \texttt{Expr a} -> \texttt{[Instr]} $:
+\[
+\begin{aligned}
+    \mathcal{C}(n) &= \mathtt{LDC}\; n \\
+    \mathcal{C}(\underline{n}) &= \mathtt{LD}\; n \\
+    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; [\mathcal{C}(\mathtt{M}); \mathtt{RTN}]) \\
+    \mathcal{C}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{AP} \\
+    \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \\
+    \mathcal{C}(\mathtt{M \circ N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{bopToInstr}(\circ) \\
+    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; [\mathcal{C}(\mathtt{M}); \mathtt{JOIN}]\; [\mathcal{C}(\mathtt{N}); \mathtt{JOIN}] \\
+    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; [\mathcal{C}(\mathtt{e}); \mathtt{RTN}]
+\end{aligned}
+\]
+
+Where \texttt{boptoInstr} is a function that transforms a binary operation $\circ$, of the form $ +, -, * $, into its associated instruction, and the underline denotes
+the De Bruijn index of a variable. \\
+We also don't care about the names the user has given to variables, as they get substituted by their De Bruijn indexes by the parser. 
+The language syntax is shown here instead of the AST representation for readability.
+
+\subsection{Interpreting Instructions}
+Now that we have the abstract machine instructions, all that is left is to run them!
+
+\begin{table}[h]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{|l|l|l|l||l|l|l|l|}
+        \hline
+        \multicolumn{4}{|c||}{\textbf{Before}} & \multicolumn{4}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} & \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} \\
+        \hline
+        \( s \) & \( e \) & \( \text{LD} \ i : c \) & \( d \) & \( e[i] : s \) & \( e \) & \( c \) & \( d \) \\
+        \( s \) & \( e \) & \( \text{LDC} \ k : c \) & \( d \) & \( \text{VInt} \ k : s \) & \( e \) & \( c \) & \( d \) \\
+        \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( e \) & \( \text{ADD} : c \) & \( d \) & \( \text{VInt} \ (v_1 + v_2) : s \) & \( e \) & \( c \) & \( d \) \\
+        \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( e \) & \( \text{SUB} : c \) & \( d \) & \( \text{VInt} \ (v_1 - v_2) : s \) & \( e \) & \( c \) & \( d \) \\
+        \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( e \) & \( \text{MUL} : c \) & \( d \) & \( \text{VInt} \ (v_1 * v_2) : s \) & \( e \) & \( c \) & \( d \) \\
+        \hline
+        \( s \) & \( e \) & \( \text{CLO} \ c' : c \) & \( d \) & \( \text{Addr} \ a : s \) & \( e \) & \( c \) & \( d \) \\
+        \( s \) & \( e \) & \( \text{FIX} \ c' : c \) & \( d \) & \( \text{Addr} \ a : s \) & \( e \) & \( c \) & \( d \) \\
+        \( v : \text{Addr} \ a : s \) & \( e \) & \( \text{AP} : c \) & \( d \) & \( [ \ ] \) & \( v : e' \) & \( c' \) & \( (s, e, c) : d \) \\
+        \( v : s \) & \( e \) & \( \text{RTN} : c \) & \( (s', e', c') : d \) & \( v : s' \) & \( e' \) & \( c' \) & \( d \) \\
+        \hline
+        \( \text{VInt} \ 0 : s \) & \( e \) & \( \text{IF} \ c_1 \ c_2 : c \) & \( d \) & \( s \) & \( e \) & \( c_1 \) & \( ([ \ ], [ \ ], c) : d \) \\
+        \( \text{VInt} \ (n \neq 0) : s \) & \( e \) & \( \text{IF} \ c_1 \ c_2 : c \) & \( d \) & \( s \) & \( e \) & \( c_2 \) & \( ([\ ], [ \ ], c) : d \) \\
+        \( s \) & \( e \) & \( \text{JOIN} : c \) & \( (s', e', c') : d \) & \( s \) & \( e \) & \( c' \) & \( d \) \\
+        \( b : s \) & \( e \) & \( \text{LET} : c \) & \( d \) & \( s \) & \( b : e \) & \( c \) & \( d \) \\
+        \( s \) & \( e \) & \( \text{HALT} : c \) & \( d \) & \( s \) & \( e \) & \( [ \ ] \) & \( d \) \\
+        \hline
+    \end{tabular}
+    \caption{SECD Machine Transitions}
+    \label{table:secd}
+\end{table}
+
+The \textbf{Store} transitions are not shown here, but its easy to infer its transitions and use:
+\begin{enumerate}
+  \item When a function is created (using instructions like CLO or FIX), a closure is built and saved in 
+    the store at a unique address (using the \texttt{Addr} value). This stored closure can later be 
+    retrieved during function application;
+  \item In the case of recursive functions, we store the function's own address inside the environment 
+    so that it can refer to itself;
+  \item Finally, for applications, one must retrieve the closure that is under the \texttt{Addr} that was popped
+    from the stack. The closure's code is denoted as \( c' \) and the environment as \( e' \) in table \ref{table:secd}.
+\end{enumerate}
+

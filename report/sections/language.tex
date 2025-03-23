@@ -1,0 +1,98 @@
+\section{Language \texttt{fun}}
+\subsection{Introduction}
+Let us define the sample language we will be using throughout the paper to later describe compilation and semantics.
+\subsection{Syntax}
+The BNF of our language is as follows:
+
+\begin{grammar}
+
+<expr> ::= <ident>
+\alt <int>
+\alt `\lambda' <ident> `->' <expr>
+\alt <expr> <expr>
+\alt `let' <ident> `=' <expr> `in' <expr>
+\alt <expr> <bop> <expr>
+\alt `if' <expr> `is 0 then' <expr> `else' <expr>
+\alt `fix' <expr>
+
+<bop> ::= `+'
+\alt `*'
+\alt `-'
+
+<int> ::= (integer literals, e.g., 0, 1, 2, ...)  
+
+<ident> ::= (identifiers, e.g., x, y, foo, ...)  
+
+\end{grammar}
+
+\subsection{Haskell datatype}
+For the implementation, instead of using identifiers, we use De Bruijn indexing to refer to variables.
+The datatype of our language is defined with a GADT that captures the return type
+of each constructor definition:
+
+\begin{lstlisting}
+data Expr a where
+  Var :: Int -> Expr a
+  Int :: Int -> Expr Int
+  Abs :: Expr b -> Expr (a -> b)
+  App :: Expr (a -> b) -> Expr a -> Expr b
+  Let :: Expr a -> Expr b -> Expr b
+  Bop :: BopE -> Expr Int -> Expr Int -> Expr Int
+  IfZ :: Expr Int -> Expr a -> Expr a -> Expr a
+  FixP :: Expr (a -> a) -> Expr a
+
+data BopE
+  = Add
+  | Mul
+  | Sub
+\end{lstlisting}
+
+% fun+ =
+% \begin{grammar}
+%
+% <expr> ::= <ident>
+% \alt <int>
+% \alt `\\' <ident> `->' <expr>
+% \alt <expr> <expr>
+% \alt `let' <ident> `=' <expr> `in' <expr>
+% \alt <expr> <bop> <expr>
+% \alt <op> <expr>
+% \alt `if' <expr> `is 0 then' <expr> `else' <expr>
+% \alt `fix' <expr>
+% \alt `('<expr>`,' <expr>`)'
+%
+% <bop> ::= `+'
+% \alt `*'
+% \alt `-'
+%
+% <op> ::= `fst'
+% \alt `snd'
+%
+% <int> ::= (integer literals, e.g., 0, 1, 2, ...)  
+%
+% <ident> ::= (identifiers, e.g., x, y, foo, ...)  
+%
+% \end{grammar}
+%
+% \begin{lstlisting}
+% data Expr a where
+%   Var :: Int -> Expr a
+%   Int :: Int -> Expr Int
+%   Abs :: Expr b -> Expr (a -> b)
+%   App :: Expr (a -> b) -> Expr a -> Expr b
+%   Let :: Expr a -> Expr b -> Expr b
+%   Bop :: BopE -> Expr Int -> Expr Int -> Expr Int
+%   Op :: OpE -> Expr a -> Expr a
+%   IfZ :: Expr Int -> Expr a -> Expr a -> Expr a
+%   FixP :: Expr (a -> a) -> Expr a
+%   Tup :: Expr a -> Expr b -> Expr (a, b)
+%
+% data BopE
+%   = Add
+%   | Mul
+%   | Sub
+%
+% data OpE
+%   = Fst
+%   | Snd
+% \end{lstlisting}

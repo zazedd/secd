@@ -1,0 +1,76 @@
+\section{Extensions}
+\subsection{Tuples}
+Tuples are an easy addition to our language.
+
+We can extend our GADT to support tuples easily, and lets assume \texttt{fun} has been extended to parse 
+tuples as well.
+
+\begin{lstlisting}
+data Expr a where
+  ...
+  Tup :: Expr a -> Expr b -> Expr (a, b)
+\end{lstlisting}
+
+Tuples are akin to values. They can be passed as arguments and returned from functions, se we will need
+to keep them in our stack. For that reason, we shall extend \texttt{Val} with a contructor for them.
+
+\begin{lstlisting}
+data Val
+  ...
+  | VTuple (Val, Val)
+\end{lstlisting}
+
+We also need something that tells the abstract machine that it should build this value, that it should
+glue these two arbitrary things together. We need a new instruction and a new compilation rule for that.
+
+\begin{lstlisting}
+data Instr
+  ...
+  | TUP
+  ...
+\end{lstlisting}
+
+
+\[ \mathcal{C}((M, N)) & = \mathcal{C}(M);\; \mathcal{C}(N);\; \texttt{TUP} \]
+
+Now that we have a way to contruct tuples, we also need a way to destruct them. We can extend our language
+with a "unary operation" construct, and encode \texttt{fst} and \texttt{snd} with it. We also need the corresponding
+instructions such that the interpreter can run them.
+
+\begin{lstlisting}
+data Expr a where
+  ...
+  Op :: OpE -> Expr a -> Expr a
+  ...
+
+data OpE
+  = Fst
+  | Snd
+
+data Instr
+  ...
+  | FST
+  | SND
+  ...
+\end{lstlisting}
+
+We are pretty much done! We just need to define how the interpreter will handle the new cases, which are pretty straight-forward:
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{|l|l|l||l|l|l|}
+        \hline
+        \multicolumn{3}{|c||}{\textbf{Before}} & \multicolumn{3}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
+        \hline
+        TUP : \(c\) & \( e \) & \( v_2 \) : \( v_1 \) : \( s \) & \( c \) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) \\
+        FST : \(c\) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_1 \) : \( s \) \\
+        SND : \(c\) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_2 \) : \( s \) \\
+        \hline
+    \end{tabular}
+    \caption{TAP Machine Transitions}
+\end{table}
+
+\subsection{Simple Type-Inference}

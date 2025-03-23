@@ -1,0 +1,237 @@
+\section{Optimizations}
+\subsection{Optimizing \texttt{let} declarations}
+Recall that the original compilation for the \texttt{let} declarations was as follows:
+\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \]
+
+This creates an extra closure from the new application, which is not as efficient as it could be.
+In fact, if we add a new instruction:
+\begin{lstlisting}
+data Instr
+  = LD Int -- loads the variable at the specified index 
+  ...
+  | LET -- pops the top of the stack and prepends it to the environment
+  ...
+\end{lstlisting}
+
+We can compile a \texttt{let} simply as:
+\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(M);\; LET;\; \mathcal{C}(N) \]
+
+And the interpreter can be extended as:
+
+\begin{table}[h]
+    \centering
+    \small
+    \setlength{\tabcolsep}{4pt}
+    \begin{tabular}{|l|l|l|l||l|l|l|l|}
+        \hline
+        \multicolumn{4}{|c||}{\textbf{Before}} & \multicolumn{4}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} & \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} \\
+        \hline
+        \( v : \ s \) & \( e \) & \( \text{LET} : c \) & \( d \) & \( s \) & \( v : e \) & \( c \) & \( d \) \\
+        \hline
+    \end{tabular}
+    \caption{LET Transition}
+\end{table}
+
+It is easy to see that now the closest binded De Bruijn indexed variable, will be whatever \texttt{M} evaluates to. 
+This models the behaviour we want for \texttt{let}!
+
+\subsection{Modern SECD: Combining the Stack and the Dump}
+You might have noticed that, when we push to the Dump, we always add the rest of the code left to run, and its environment. 
+Doesn't that sound like a closure? Well, as it turns out, \textbf{it is}!
+Let's implement the Dumpless, Storeless SECD machine, commonly called the CES machine.
+
+\subsubsection{A Simpler Version First}
+
+First things first, let's extend the \texttt{Val} data type to contain closures:
+\begin{lstlisting}
+data Val
+  = VInt Int
+  | VClos ([Instr], Env)
+\end{lstlisting}
+
+We also don't need \texttt{Addr} anymore, which was only used to access the \texttt{Store},
+because we will now be keeping all closures on the stack.
+
+Our compile function stays the same for now, the magic happens while interpreting!
+
+\begin{table}[h]
+    \centering
+    \begin{tabular}{|l|l|l||l|l|l|}
+        \hline
+        \multicolumn{3}{|c||}{\textbf{Before}} & \multicolumn{3}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
+        \hline
+        LD \(n\) ; c & \( e \) & \( s \) & \( c \) & \( e \) & \( e(n) : s \) \\
+        LDC \(k\) : c & \( e \) & \( s \) & \( c \) & \( e \) & \( k : s \) \\
+        ADD : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 + v_2) : s \) \\
+        SUB : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 - v_2) : s \) \\
+        MUL : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 * v_2) : s \) \\
+        \hline
+        CLO \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VClos(\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v : e' \) & VClos(\( c , e \)) : \( s \) \\
+        RTN : c & \( e \) & \( v : \text{VClos}(c', e') : s \) & \( c' \) & \( e' \) & \( v : s \) \\
+        \hline
+        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ 0 : s \) & \( c_0 \) & \( e \) & Clos(\( c, e \)) : \( s \) \\
+        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ (n \neq 0) : s \) & \( c_1 \) & \( e \) & Clos(\( c, e \)) : \( s \) \\
+        \hline
+        \( \text{LET} : c \) & \( e \) & \( v : \ s \) & \( c \) & \( v : e \) & \( s \) \\
+        \( \text{HALT} : c \) & \( e \) & \( v : \ s \) & \( [ \ ] \) & \( e \) & \( s \) \\
+        \hline
+    \end{tabular}
+    \caption{CES Machine Transitions, no FIX}
+\end{table}
+
+You might have noticed that we are missing the fixed point operation. Lets tackle this hurdle.
+
+\subsubsection{Adding the Fixed Point}
+
+Instead of just the one case where our fixed point absolutely needed at least two abstractions inside (the recursive function itself, and a first argument), 
+we can also handle the case where it only has one (just the recursive function). Let's call this case the \textit{control} case.
+
+We can add a new constructor to our instruction set:
+\begin{lstlisting}
+data Instr
+  = LD Int -- loads the variable at the specified index 
+  ...
+  | FIX [Instr] -- loads a recursive function
+  | FIXC [Instr] -- loads a recursive function (control case)
+  ...
+\end{lstlisting}
+
+And we should extend our \texttt{Val} data type to accommodate our new closures:
+
+\begin{lstlisting}
+data Val
+  = VInt Int
+  | VClos ([Instr], Env)
+  | VFixClos ([Instr], Env) -- recursive closure
+  | VFixCClos ([Instr], Env) -- recursive closure (control case)
+\end{lstlisting}
+
+We are now ready to both compile our new instructions, and interpret them!
+
+The compilation cases are:
+\[
+\begin{aligned}
+  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) & = \mathtt{FIX}\; [\mathcal{C}(\mathtt{e});\; \mathtt{RTN}] \\
+  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) & = \mathtt{FIXC}\; [\mathcal{C}(\mathtt{e});\; \mathtt{RTN}]
+\end{aligned}
+\]
+
+And, to interpret:
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{|l|l|l||l|l|l|}
+        \hline
+        \multicolumn{3}{|c||}{\textbf{Before}} & \multicolumn{3}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
+        \hline
+        FIX \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixClos(\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VFixClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos(\( c' , e' \)) : \( e' \) & VClos(\( c , e \)) : \( s \) \\
+        \hline
+        FIXC \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixCClos(\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VFixCClos(\( c' , e' \)) : \( s \) & \( c' \) & VFixClos(\( c' , e' \)) : \( e' \) & VClos(\( c , e \)) : \( s \) \\
+        \hline
+    \end{tabular}
+    \caption{CES Machine Transitions for FIX}
+\end{table}
+
+In short, the application for a fixed point not only applies the code, but also inserts the fixed point below
+the argument of the application (if there is one) in the environment, so that a recursive call can be
+executed correctly.
+
+\subsection{Tail Call Optimization}
+Now that we have successfuly eliminated the need for a Dump and a Store, doing tail call optimization is easy.
+
+But what even are tail calls? Consider the following:
+
+\[
+\begin{aligned}
+f &= \lambda x \to \dots \ g \ (x) \dots \\
+g &= \lambda y \to h \ (...) \\
+h &= \lambda z \to \dots
+\end{aligned}
+\]
+The call from $g$ to $h$ is a \textbf{tail call}: when $h$ returns, $g$ has nothing more to
+compute, it just returns immediately to $f$.
+
+If we analyze the instructions this sequence would create, we would see that the code
+for $g$ is of the form $ [\dots;\ \texttt{AP};\ \texttt{RTN}] $. This will create a closure with only
+\texttt{RTN} inside, consuming stack space.
+
+It may seem that this stack space is unimportant at first, but consider a recursive function
+like the following one:
+
+\[
+\begin{aligned}
+  &\text{let fact} = \text{fix fact } (\lambda f \to (\lambda n \to (\lambda acc \to\\[1mm]
+                 &\quad\quad \text{if } n \text{ is 0 then } acc \ \text{else } f \ (n - 1) \ (acc * n)\\[1mm]
+                 &)))\\[1mm]
+                 &\text{in fact }\ 42\ 1
+\end{aligned}
+\]
+
+The recursive call to $ f $ is in tail position. If we don't eliminate the tail call,
+this code will run with $\mathcal{O}(n)$ stack space, which risks a stack overflow. If we
+do apply tail call optimization, it runs in $\mathcal{O}(1)$ stack space as expected.
+
+So what is the trick? First, we need a new instruction specifically for tail applications.
+Then, we should split the compilation into two mutually recursive functions, $\mathcal{C}$ and $\mathcal{T}$, for normal terms
+and terms in tail call position respectively.
+
+We also need a new instruction to signal the end of a \texttt{let} declaration:
+
+\begin{lstlisting}
+data Instr
+  = LD Int -- loads the variable at the specified index 
+  ...
+  | TAP -- tail application
+  | ENDLET
+  ...
+\end{lstlisting}
+
+Now $\mathcal{C}$ and $\mathcal{T}$:
+\[
+\begin{aligned}
+    \mathcal{C}(n) &= \mathtt{LDC}\; n \\
+    \mathcal{C}(\underline{n}) &= \mathtt{LD}\; n \\
+    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; (\textcolor{red}{\mathcal{T}(\mathtt{M})}) \\
+    \mathcal{C}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{AP} \\
+    \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(\mathtt{M});\; \texttt{LET};\; \mathcal{C}(\mathtt{N});\; \texttt{ENDLET} \\
+    \mathcal{C}(\mathtt{M \circ N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{bopToInstr}(\circ) \\
+    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; \left(\textcolor{red}{\mathcal{T}(\mathtt{M})}\right)\; \left(\textcolor{red}{\mathcal{T}(\mathtt{N})}\right) \\
+    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; \left(\textcolor{red}{\mathcal{T}(\mathtt{e})}\right) \\
+    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) &= \mathtt{FIXC}\; \left(\textcolor{red}{\mathcal{T}(\mathtt{e})}\right) \\
+    \\
+    \mathcal{T}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(\mathtt{M});\; \texttt{LET};\; \mathcal{T}(\mathtt{N}) \\
+    \mathcal{T}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M}); \mathcal{C}(\mathtt{N}); \mathtt{TAP} \\
+    \mathcal{T}(a) &= \mathcal{C}(a); \texttt{RTN}
+\end{aligned}
+\]
+
+Now for the semantics of \texttt{TAP}, it is very simple. They are a mirror of the \texttt{AP} rules, except that it doesn't bother
+to push a new closure onto the stack.
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{|l|l|l||l|l|l|}
+        \hline
+        \multicolumn{3}{|c||}{\textbf{Before}} & \multicolumn{3}{c|}{\textbf{After}} \\
+        \hline
+        \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
+        \hline
+        TAP : \(c\) & \( e \) & \( v \) : Clos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : \( e' \) & \( s \) \\
+        TAP : \(c\) & \( e \) & \( v \) : VFixClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos(\( c' , e' \)) : \( e' \) & \( s \) \\
+        TAP : \(c\) & \( e \) & \( v \) : VFixCClos(\( c' , e' \)) : \( s \) & \( c' \) & VFixClos(\( c' , e' \)) : \( e' \) & \( s \) \\
+        \hline
+    \end{tabular}
+    \caption{TAP Machine Transitions}
+\end{table}
+
