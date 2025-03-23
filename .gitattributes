@@ -1,2 +1,1 @@
-*.hs -linguist-detectable
-*.nix -linguist-detectable
+*.tex -linguist-detectable
