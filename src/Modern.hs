@@ -2,16 +2,15 @@ module Main where
 
 import Bruijn
 import Control.Monad (forM_)
-import qualified Data.Map as Map
 import Debug.Trace (trace)
 
 data Val
   = VInt Int
-  | -- | VName String -- variant names
-    VClos ([Instr], Env)
+  | VClos ([Instr], Env)
   | VFixClos ([Instr], Env) -- recursive closure
   | VFixCClos ([Instr], Env) -- recursive closure, with control point
   | VTuple (Val, Val)
+  | VVariant String Val
 
 instance Show Val where
   show v = case v of
@@ -20,6 +19,7 @@ instance Show Val where
     VFixClos _ -> "<recursive closure>"
     VFixCClos _ -> "<recursive control closure>"
     VTuple (a, b) -> "(" ++ show a ++ ", " ++ show b ++ ")"
+    VVariant name v' -> "<" ++ name ++ " " ++ show v' ++ ">"
 
 -- this implementation combines the stack and the dump into one
 -- also called the CES machine, for Code pointer, Env, Stack
@@ -44,6 +44,7 @@ data Instr
   | MUL
   | SUB
   | VARIANT String
+  | MATCH [(String, [Instr])]
   | TUP
   | FST
   | SND
@@ -119,6 +120,19 @@ compile ex = c ex >>= \v -> return $ v ++ [HALT]
       a' <- c a
       b' <- c b
       return $ a' ++ b' ++ [TUP]
+    Variant (tag, e) -> do
+      e' <- c e
+      return $ e' ++ [VARIANT tag]
+    Match (vic, alts) -> do
+      vic' <- c vic
+      branches <-
+        mapM
+          ( \(name, branch) -> do
+              branch' <- c branch
+              return (name, branch')
+          )
+          alts
+      return $ vic' ++ [MATCH branches]
   t :: Expr a -> Either String [Instr]
   t expr =
     case expr of
@@ -134,50 +148,57 @@ compile ex = c ex >>= \v -> return $ v ++ [HALT]
         return $ e1' ++ e2' ++ [TAP]
       a -> c a >>= \a' -> return $ a' ++ [RTN]
 
-step :: Int -> CES -> Maybe CES
+step :: Int -> CES -> Either String CES
 step i secd@(code, _, stack) =
   -- trace ("STACK " ++ show i ++ ": " ++ show stack) $
-  --   trace ("CODE " ++ show i ++ ": " ++ show code) $
+  -- trace ("STACK SIZE #" ++ show i ++ ": " ++ show (length stack)) $
+  -- trace ("CODE " ++ show i ++ ": " ++ show code) $
   case secd of
     -- variables/constants
-    (LD n : c, e, s) -> Just (c, e, e !! n : s)
-    (LDC n : c, e, s) -> Just (c, e, VInt n : s)
+    (LD n : c, e, s) -> Right (c, e, e !! n : s)
+    (LDC n : c, e, s) -> Right (c, e, VInt n : s)
     -- Let
-    (LET : c, e, v : s) -> Just (c, v : e, s)
-    (ENDLET : c, _ : e, s) -> Just (c, e, s)
+    (LET : c, e, v : s) -> Right (c, v : e, s)
+    (ENDLET : c, _ : e, s) -> Right (c, e, s)
     -- closure and recursive closures
-    (CLO c' : c, e, s) -> Just (c, e, s')
+    (CLO c' : c, e, s) -> Right (c, e, s')
      where
       closure = VClos (c', e)
       s' = closure : s
-    (FIX c' : c, e, s) -> Just (c, e, VFixClos (c', e) : s)
-    (FIXC c' : c, e, s) -> Just (c, e, VFixCClos (c', e) : s)
+    (FIX c' : c, e, s) -> Right (c, e, VFixClos (c', e) : s)
+    (FIXC c' : c, e, s) -> Right (c, e, VFixCClos (c', e) : s)
     -- application
-    (AP : c, e, v : VClos (c', e') : s) -> Just (c', v : e', VClos (c, e) : s)
-    (AP : c, e, v : VFixClos (c', e') : s) -> Just (c', v : VFixClos (c', e') : e', VClos (c, e) : s)
-    (AP : c, e, VFixCClos (c', e') : s) -> Just (c', VFixClos (c', e') : e', VClos (c, e) : s)
+    (AP : c, e, v : VClos (c', e') : s) -> Right (c', v : e', VClos (c, e) : s)
+    (AP : c, e, v : VFixClos (c', e') : s) -> Right (c', v : VFixClos (c', e') : e', VClos (c, e) : s)
+    (AP : c, e, VFixCClos (c', e') : s) -> Right (c', VFixClos (c', e') : e', VClos (c, e) : s)
     -- tail application, we dont bother to push a closure into the stack
-    (TAP : _, _, v : VClos (c', e') : s) -> Just (c', v : e', s)
-    (TAP : _, _, v : VFixClos (c', e') : s) -> Just (c', v : VFixCClos (c', e') : e', s)
-    (TAP : _, _, v : VFixCClos (c', e') : s) -> Just (c', v : VFixClos (c', e') : e', s)
+    (TAP : _, _, v : VClos (c', e') : s) -> Right (c', v : e', s)
+    (TAP : _, _, v : VFixClos (c', e') : s) -> Right (c', v : VFixCClos (c', e') : e', s)
+    (TAP : _, _, v : VFixCClos (c', e') : s) -> Right (c', v : VFixClos (c', e') : e', s)
     -- return
-    (RTN : _, _, v : VClos (c', e') : s) -> Just (c', e', v : s)
+    (RTN : _, _, v : VClos (c', e') : s) -> Right (c', e', v : s)
     -- binary operations
-    (ADD : c, e, VInt v2 : VInt v1 : s) -> Just (c, e, VInt (v1 + v2) : s)
-    (SUB : c, e, VInt v2 : VInt v1 : s) -> Just (c, e, VInt (v1 - v2) : s)
-    (MUL : c, e, VInt v2 : VInt v1 : s) -> Just (c, e, VInt (v1 * v2) : s)
+    (ADD : c, e, VInt v2 : VInt v1 : s) -> Right (c, e, VInt (v1 + v2) : s)
+    (SUB : c, e, VInt v2 : VInt v1 : s) -> Right (c, e, VInt (v1 - v2) : s)
+    (MUL : c, e, VInt v2 : VInt v1 : s) -> Right (c, e, VInt (v1 * v2) : s)
     -- tuples
-    (TUP : c, e, v2 : v1 : s) -> Just (c, e, VTuple (v1, v2) : s)
-    (FST : c, e, VTuple (v1, _) : s) -> Just (c, e, v1 : s)
-    (SND : c, e, VTuple (_, v2) : s) -> Just (c, e, v2 : s)
+    (TUP : c, e, v2 : v1 : s) -> Right (c, e, VTuple (v1, v2) : s)
+    (FST : c, e, VTuple (v1, _) : s) -> Right (c, e, v1 : s)
+    (SND : c, e, VTuple (_, v2) : s) -> Right (c, e, v2 : s)
     -- if
-    (IF c1 c2 : c, e, VInt n : s) -> Just (if n == 0 then c1 else c2, e, VClos (c, e) : s)
+    (IF c1 c2 : c, e, VInt n : s) -> Right (if n == 0 then c1 else c2, e, VClos (c, e) : s)
+    -- variants
+    (VARIANT name : c, e, v : s) -> Right (c, e, VVariant name v : s)
+    (MATCH branches : _, e, VVariant name v : s) ->
+      case lookup name branches of
+        Just c' -> Right (c', v : e, s)
+        Nothing -> Left $ "No matching branch for tag: " ++ name
     -- end
-    (HALT : _, e, s) -> Just ([], e, s)
-    (_, _, _) -> Nothing
+    (HALT : _, e, s) -> Right ([], e, s)
+    (_, _, _) -> Left "Unrecognized instruction, or wrong stack/environment"
 
-eval :: Int -> CES -> Maybe Val
-eval _ ([], _, VInt i : _) = Just $ VInt i
+eval :: Int -> CES -> Either String Val
+eval _ ([], _, VInt i : _) = Right $ VInt i
 eval i ces = step i ces >>= eval (i + 1)
 
 makeCES :: [Instr] -> CES
@@ -228,6 +249,30 @@ main = do
                 )
             )
         )
+    len =
+      FixP
+        ( Abs
+            ( Abs
+                ( Abs
+                    ( Match
+                        ( Var 1 -- pattern–match on the list
+                        ,
+                          [ ("Nil", Var 1) -- if the list is empty, return the accumulator
+                          ,
+                            ( "Cons"
+                            , App
+                                ( App
+                                    (Var 3)
+                                    (Op Snd (Var 0)) -- recursively call the function with tail
+                                )
+                                (Bop Add (Var 1) (Int 1)) -- and accumulator + 1
+                            )
+                          ]
+                        )
+                    )
+                )
+            )
+        )
     tests =
       [ App (Abs (Var 0)) (Int 5)
       , Let (Int 5) (App (Abs (Var 0)) (Var 0))
@@ -247,16 +292,39 @@ main = do
       , Let fact (App (Var 0) (Int 5))
       , Let fact_tail (App (App (Var 0) (Int 5)) (Int 1))
       , Let fact_tail_pair $ App (Var 0) (Tup (Int 5) (Int 1))
-      -- , recursive_sum `App` Int 2
+      , recursive_sum `App` Int 2
+      , Match
+          ( Variant ("Some", Int 42)
+          ,
+            [ ("Some", Var 0)
+            , ("None", Int 0)
+            ]
+          )
+      , -- length of 3-element-long list, should = 3
+        ( len
+            `App` Variant
+              ( "Cons"
+              , Tup
+                  (Int 1)
+                  ( Variant
+                      ( "Cons"
+                      , Tup
+                          (Int 2)
+                          ( Variant
+                              ( "Cons"
+                              , Tup
+                                  (Int 3)
+                                  (Variant ("Nil", Int 0))
+                              )
+                          )
+                      )
+                  )
+              )
+        )
+          `App` Int 0
       ]
-  print (runInfer (infer Map.empty fact))
-  print (runInfer (infer Map.empty fact_tail))
-  print (runInfer (infer Map.empty fact_tail_pair))
   forM_ tests $
     \a -> do
       print a
-      print (runInfer (infer Map.empty a))
-      print (compileNonTail a)
-      print (compile a)
-      print (eval 0 (makeCES (compileNonTail a)))
+      -- print (eval 0 (makeCES (compileNonTail a)))
       print (compile a >>= \c -> return $ eval 0 (makeCES c))

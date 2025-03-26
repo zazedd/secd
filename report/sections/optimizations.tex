@@ -1,7 +1,7 @@
 \section{Optimizations}
 \subsection{Optimizing \texttt{let} declarations}
 Recall that the original compilation for the \texttt{let} declarations was as follows:
-\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \]
+\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \]
 
 This creates an extra closure from the new application, which is not as efficient as it could be.
 In fact, if we add a new instruction:
@@ -14,7 +14,7 @@ data Instr
 \end{lstlisting}
 
 We can compile a \texttt{let} simply as:
-\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(M);\; LET;\; \mathcal{C}(N) \]
+\[ \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) = \mathcal{C}(M);\; \texttt{LET};\; \mathcal{C}(N) \]
 
 And the interpreter can be extended as:
 
@@ -116,13 +116,10 @@ We are now ready to both compile our new instructions, and interpret them!
 The compilation cases are:
 \[
 \begin{aligned}
-  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) & = \mathtt{FIX}\; [\mathcal{C}(\mathtt{e});\; \mathtt{RTN}] \\
-  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) & = \mathtt{FIXC}\; [\mathcal{C}(\mathtt{e});\; \mathtt{RTN}]
+  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) & = \mathtt{FIX}\; (\mathcal{C}(\mathtt{e});\; \mathtt{RTN}) \\
+  \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) & = \mathtt{FIXC}\; (\mathcal{C}(\mathtt{e});\; \mathtt{RTN})
 \end{aligned}
 \]
-
-And, to interpret:
-
 \begin{table}[h]
     \centering
     \small
@@ -140,7 +137,10 @@ And, to interpret:
         \hline
     \end{tabular}
     \caption{CES Machine Transitions for FIX}
+    \label{table:ces}
 \end{table}
+
+Table \ref{table:ces} outlines the interpreting steps.
 
 In short, the application for a fixed point not only applies the code, but also inserts the fixed point below
 the argument of the application (if there is one) in the environment, so that a recursive call can be
@@ -210,12 +210,11 @@ Now $\mathcal{C}$ and $\mathcal{T}$:
     \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) &= \mathtt{FIXC}\; \left(\textcolor{red}{\mathcal{T}(\mathtt{e})}\right) \\
     \\
     \mathcal{T}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(\mathtt{M});\; \texttt{LET};\; \mathcal{T}(\mathtt{N}) \\
-    \mathcal{T}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M}); \mathcal{C}(\mathtt{N}); \mathtt{TAP} \\
-    \mathcal{T}(a) &= \mathcal{C}(a); \texttt{RTN}
+    \mathcal{T}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M}); \mathcal{C}(\mathtt{N});\; \mathtt{TAP} \\
+    \mathcal{T}(a) &= \mathcal{C}(a);\; \texttt{RTN}
 \end{aligned}
 \]
-
-Now for the semantics of \texttt{TAP}, it is very simple. They are a mirror of the \texttt{AP} rules, except that it doesn't bother
+Now for the semantics of \texttt{TAP}, it is very simple. They are a mirror of the \texttt{AP} rules, except that they don't bother
 to push a new closure onto the stack.
 
 \begin{table}[h]
@@ -235,3 +234,42 @@ to push a new closure onto the stack.
     \caption{TAP Machine Transitions}
 \end{table}
 
+Let's compare the difference between our tail optimized compiler, and our last compiler definition. Specifically, let's look
+at the number of items on the stack for an evaluation of the \texttt{fact 42 1} term above:
+
+\begin{table}[h]
+    \centering
+    \small
+    \begin{tabular}{|r||c|c|}
+        \hline
+        Step \# & Non-Tail & Tail \\
+        \hline \hline
+        ... & ... & ... \\
+        \hline
+        552 & 86 & 45 \\
+        \hline
+        553 & 87 & 46 \\
+        \hline
+        554 & 86 & 45 \\
+        \hline
+        555 & 85 & 43 \\
+        \hline
+        556 & 86 & 44 \\
+        \hline
+        557 & 86 & 44 \\
+        \hline
+        558 & 87 & 45 \\
+        \hline
+        ... & ... & ... \\
+        \hline
+        603 & 42 & 1 \\
+        \hline
+        ... & ... & 0 \\
+        \hline
+        645 & 1 & 0 \\
+        \hline
+    \end{tabular}
+    \caption{Stack Sizes for Non-Tail and Tail Calls}
+\end{table}
+
+You can see how this scales exponentially.

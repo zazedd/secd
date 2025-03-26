@@ -63,12 +63,12 @@ We define the compilation function $ \mathcal{C} $, with type $ \texttt{Expr a} 
 \begin{aligned}
     \mathcal{C}(n) &= \mathtt{LDC}\; n \\
     \mathcal{C}(\underline{n}) &= \mathtt{LD}\; n \\
-    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; [\mathcal{C}(\mathtt{M}); \mathtt{RTN}]) \\
+    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; (\mathcal{C}(\mathtt{M}); \mathtt{RTN}) \\
     \mathcal{C}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{AP} \\
     \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \\
     \mathcal{C}(\mathtt{M \circ N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{bopToInstr}(\circ) \\
-    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; [\mathcal{C}(\mathtt{M}); \mathtt{JOIN}]\; [\mathcal{C}(\mathtt{N}); \mathtt{JOIN}] \\
-    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; [\mathcal{C}(\mathtt{e}); \mathtt{RTN}]
+    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; (\mathcal{C}(\mathtt{M}); \mathtt{JOIN})\; (\mathcal{C}(\mathtt{N}); \mathtt{JOIN}) \\
+    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; (\mathcal{C}(\mathtt{e}); \mathtt{RTN})
 \end{aligned}
 \]
 
@@ -112,7 +112,7 @@ Now that we have the abstract machine instructions, all that is left is to run t
     \label{table:secd}
 \end{table}
 
-The \textbf{Store} transitions are not shown here, but its easy to infer its transitions and use:
+The \textbf{Store} transitions are not shown in table \ref{table:secd}, but its easy to infer its transitions and use:
 \begin{enumerate}
   \item When a function is created (using instructions like CLO or FIX), a closure is built and saved in 
     the store at a unique address (using the \texttt{Addr} value). This stored closure can later be 
