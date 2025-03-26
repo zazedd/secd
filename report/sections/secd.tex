@@ -3,10 +3,11 @@
 The SECD machine was introduced in 1964 by Landin. It has a simple instruction set that operates
 on stacks. You can think about this instruction set as a virtual machine of sorts, if you translate
 your language into this instruction set, through a process called \textbf{compilation},
-then there is a standard way of running said instructions. Hopefully, given your compiled program is
-correct, the list of instructions is \textbf{interpreted}, producing the expected behaviour of the term written in your language.
+then there is a standard way of running said instructions. Hopefully, if your compiled program is
+correct, the list of instructions is \textbf{interpreted} and will produce the expected behaviour 
+for the term written in your language.
 
-The list of instructions is just the first part, to \textbf{interpret} them, the SECD machine keeps 4 data structures in memory, 
+Compilation is just the first part, to \textbf{interpret}, the SECD machine keeps 4 data structures in memory, 
 and sometimes another helper data structure to support function applications.
 
 \subsection{Data Structures}
@@ -18,7 +19,7 @@ The stack is a list of the \texttt{Val} data type:
 \begin{lstlisting}
 data Val
   = VInt Int
-  | Addr Int -- corresponds to the position of either a variable or a function inside the Env
+  | Addr Int -- corresponds to the position of a closure inside the Store
 \end{lstlisting}
 
 \subsubsection{E: Environment}
@@ -29,7 +30,7 @@ This is the list of instructions that we compiled previously, and are currently 
 \subsubsection{D: Dump}
 The dump stores the contents of the other 3 registers temporarily, while a function is executing, for example.
 You can see these function calls as \textbf{detours} from the original execution. When they are finished, 
-we can pop the head of the Dump to go retrieve the main execution path.
+we can pop the head of the Dump to retrieve the main execution path.
 
 We will see later that we can combine the Stack and Dump into just one data structure.
 \subsubsection{Closures on a Store}
@@ -58,17 +59,17 @@ data Instr
 \end{lstlisting}
 
 \subsection{Compilation from \texttt{fun}}
-We define the compilation function $ \mathcal{C} $, with type $ \texttt{Expr a} -> \texttt{[Instr]} $:
+We define the compilation function $ \mathcal{C} $, with type $ \texttt{Expr a} \to \texttt{[Instr]} $:
 \[
 \begin{aligned}
     \mathcal{C}(n) &= \mathtt{LDC}\; n \\
     \mathcal{C}(\underline{n}) &= \mathtt{LD}\; n \\
-    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; (\mathcal{C}(\mathtt{M}); \mathtt{RTN}) \\
+    \mathcal{C}(\mathtt{\lambda\; \_ \to M}) &= \mathtt{CLO}\; (\mathcal{C}(\mathtt{M});\; \mathtt{RTN}) \\
     \mathcal{C}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{AP} \\
     \mathcal{C}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}((\lambda\; \_ \to \mathtt{N})\; \mathtt{M}) \\
     \mathcal{C}(\mathtt{M \circ N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{bopToInstr}(\circ) \\
-    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; (\mathcal{C}(\mathtt{M}); \mathtt{JOIN})\; (\mathcal{C}(\mathtt{N}); \mathtt{JOIN}) \\
-    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; (\mathcal{C}(\mathtt{e}); \mathtt{RTN})
+    \mathcal{C}(\mathtt{if\; B\; is\; 0\; then \; M\; else \; N}) &= \mathcal{C}(\mathtt{B});\; \mathtt{IF}\; (\mathcal{C}(\mathtt{M});\; \mathtt{JOIN})\; (\mathcal{C}(\mathtt{N});\; \mathtt{JOIN}) \\
+    \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to \lambda \ \_ \to e)}) &= \mathtt{FIX}\; (\mathcal{C}(\mathtt{e});\; \mathtt{RTN})
 \end{aligned}
 \]
 
@@ -90,7 +91,7 @@ Now that we have the abstract machine instructions, all that is left is to run t
         \hline
         \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} & \textbf{Stack} & \textbf{Env} & \textbf{Code} & \textbf{Dump} \\
         \hline
-        \( s \) & \( e \) & \( \text{LD} \ i : c \) & \( d \) & \( e[i] : s \) & \( e \) & \( c \) & \( d \) \\
+        \( s \) & \( e \) & \( \text{LD} \ n : c \) & \( d \) & \( e(n) : s \) & \( e \) & \( c \) & \( d \) \\
         \( s \) & \( e \) & \( \text{LDC} \ k : c \) & \( d \) & \( \text{VInt} \ k : s \) & \( e \) & \( c \) & \( d \) \\
         \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( e \) & \( \text{ADD} : c \) & \( d \) & \( \text{VInt} \ (v_1 + v_2) : s \) & \( e \) & \( c \) & \( d \) \\
         \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( e \) & \( \text{SUB} : c \) & \( d \) & \( \text{VInt} \ (v_1 - v_2) : s \) & \( e \) & \( c \) & \( d \) \\

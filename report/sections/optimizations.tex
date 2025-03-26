@@ -35,7 +35,7 @@ And the interpreter can be extended as:
 \end{table}
 
 It is easy to see that now the closest binded De Bruijn indexed variable, will be whatever \texttt{M} evaluates to. 
-This models the behaviour we want for \texttt{let}!
+This models the behaviour we want for \texttt{let}.
 
 \subsection{Modern SECD: Combining the Stack and the Dump}
 You might have noticed that, when we push to the Dump, we always add the rest of the code left to run, and its environment. 
@@ -54,7 +54,7 @@ data Val
 We also don't need \texttt{Addr} anymore, which was only used to access the \texttt{Store},
 because we will now be keeping all closures on the stack.
 
-Our compile function stays the same for now, the magic happens while interpreting!
+Our compile function stays the same for now, the magic happens while interpreting! \cite{CockettAM}
 
 \begin{table}[h]
     \centering
@@ -66,16 +66,16 @@ Our compile function stays the same for now, the magic happens while interpretin
         \hline
         LD \(n\) ; c & \( e \) & \( s \) & \( c \) & \( e \) & \( e(n) : s \) \\
         LDC \(k\) : c & \( e \) & \( s \) & \( c \) & \( e \) & \( k : s \) \\
-        ADD : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 + v_2) : s \) \\
-        SUB : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 - v_2) : s \) \\
-        MUL : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & \( (v_1 * v_2) : s \) \\
+        ADD : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & VInt \( (v_1 + v_2) : s \) \\
+        SUB : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & VInt \( (v_1 - v_2) : s \) \\
+        MUL : c & \( e \) & \( \text{VInt} \ v_2 : \text{VInt} \ v_1 : s \) & \( c \) & \( e \) & VInt \( (v_1 * v_2) : s \) \\
         \hline
-        CLO \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VClos(\( c' , e \)) : \( s \) \\
-        AP : \(c\) & \( e \) & \( v \) : VClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v : e' \) & VClos(\( c , e \)) : \( s \) \\
-        RTN : c & \( e \) & \( v : \text{VClos}(c', e') : s \) & \( c' \) & \( e' \) & \( v : s \) \\
+        CLO \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VClos (\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VClos (\( c' , e' \)) : \( s \) & \( c' \) & \( v : e' \) & VClos (\( c , e \)) : \( s \) \\
+        RTN : c & \( e \) & \( v : \text{VClos} (c', e') : s \) & \( c' \) & \( e' \) & \( v : s \) \\
         \hline
-        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ 0 : s \) & \( c_0 \) & \( e \) & Clos(\( c, e \)) : \( s \) \\
-        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ (n \neq 0) : s \) & \( c_1 \) & \( e \) & Clos(\( c, e \)) : \( s \) \\
+        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ 0 : s \) & \( c_0 \) & \( e \) & Clos (\( c, e \)) : \( s \) \\
+        IF\ \( c_0 \ c_1 \) : c & \( e \) & \( \text{VInt} \ (n \neq 0) : s \) & \( c_1 \) & \( e \) & Clos (\( c, e \)) : \( s \) \\
         \hline
         \( \text{LET} : c \) & \( e \) & \( v : \ s \) & \( c \) & \( v : e \) & \( s \) \\
         \( \text{HALT} : c \) & \( e \) & \( v : \ s \) & \( [ \ ] \) & \( e \) & \( s \) \\
@@ -83,6 +83,9 @@ Our compile function stays the same for now, the magic happens while interpretin
     \end{tabular}
     \caption{CES Machine Transitions, no FIX}
 \end{table}
+
+A side effect of this simplification is that we don't need a seperate instruction for joining the \texttt{if} branches
+with the main execution. Because the \texttt{if} also creates a closure, we can return using \texttt{RTN} instead of \texttt{JOIN}.
 
 You might have noticed that we are missing the fixed point operation. Lets tackle this hurdle.
 
@@ -94,7 +97,6 @@ we can also handle the case where it only has one (just the recursive function).
 We can add a new constructor to our instruction set:
 \begin{lstlisting}
 data Instr
-  = LD Int -- loads the variable at the specified index 
   ...
   | FIX [Instr] -- loads a recursive function
   | FIXC [Instr] -- loads a recursive function (control case)
@@ -129,18 +131,18 @@ The compilation cases are:
         \hline
         \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
         \hline
-        FIX \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixClos(\( c' , e \)) : \( s \) \\
-        AP : \(c\) & \( e \) & \( v \) : VFixClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos(\( c' , e' \)) : \( e' \) & VClos(\( c , e \)) : \( s \) \\
+        FIX \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixClos (\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VFixClos (\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos (\( c' , e' \)) : \( e' \) & VClos (\( c , e \)) : \( s \) \\
         \hline
-        FIXC \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixCClos(\( c' , e \)) : \( s \) \\
-        AP : \(c\) & \( e \) & \( v \) : VFixCClos(\( c' , e' \)) : \( s \) & \( c' \) & VFixClos(\( c' , e' \)) : \( e' \) & VClos(\( c , e \)) : \( s \) \\
+        FIXC \(c'\) : c & \( e \) & \( s \) & \( c \) & \( e \) & VFixCClos (\( c' , e \)) : \( s \) \\
+        AP : \(c\) & \( e \) & \( v \) : VFixCClos (\( c' , e' \)) : \( s \) & \( c' \) & VFixClos (\( c' , e' \)) : \( e' \) & VClos (\( c , e \)) : \( s \) \\
         \hline
     \end{tabular}
     \caption{CES Machine Transitions for FIX}
     \label{table:ces}
 \end{table}
 
-Table \ref{table:ces} outlines the interpreting steps.
+Table \ref{table:ces} outlines the interpreting steps. \cite{CockettAM}
 
 In short, the application for a fixed point not only applies the code, but also inserts the fixed point below
 the argument of the application (if there is one) in the environment, so that a recursive call can be
@@ -168,14 +170,10 @@ for $g$ is of the form $ [\dots;\ \texttt{AP};\ \texttt{RTN}] $. This will creat
 It may seem that this stack space is unimportant at first, but consider a recursive function
 like the following one:
 
-\[
-\begin{aligned}
-  &\text{let fact} = \text{fix fact } (\lambda f \to (\lambda n \to (\lambda acc \to\\[1mm]
-                 &\quad\quad \text{if } n \text{ is 0 then } acc \ \text{else } f \ (n - 1) \ (acc * n)\\[1mm]
-                 &)))\\[1mm]
-                 &\text{in fact }\ 42\ 1
-\end{aligned}
-\]
+\begin{lstlisting}[mathescape]
+let fact = fix ($ \lambda f \to \lambda n \to \lambda acc \to $ if n is 0 then acc else f (n - 1) (acc * n))
+in fact 42 1
+\end{lstlisting}
 
 The recursive call to $ f $ is in tail position. If we don't eliminate the tail call,
 this code will run with $\mathcal{O}(n)$ stack space, which risks a stack overflow. If we
@@ -184,6 +182,8 @@ do apply tail call optimization, it runs in $\mathcal{O}(1)$ stack space as expe
 So what is the trick? First, we need a new instruction specifically for tail applications.
 Then, we should split the compilation into two mutually recursive functions, $\mathcal{C}$ and $\mathcal{T}$, for normal terms
 and terms in tail call position respectively.
+
+\newpage
 
 We also need a new instruction to signal the end of a \texttt{let} declaration:
 
@@ -196,7 +196,7 @@ data Instr
   ...
 \end{lstlisting}
 
-Now $\mathcal{C}$ and $\mathcal{T}$:
+Now $\mathcal{C}$ and $\mathcal{T}$ \cite{LeroyMPRI}:
 \[
 \begin{aligned}
     \mathcal{C}(n) &= \mathtt{LDC}\; n \\
@@ -210,7 +210,7 @@ Now $\mathcal{C}$ and $\mathcal{T}$:
     \mathcal{C}(\mathtt{fix\; (\lambda \ \_ \to e)}) &= \mathtt{FIXC}\; \left(\textcolor{red}{\mathcal{T}(\mathtt{e})}\right) \\
     \\
     \mathcal{T}(\mathtt{let\; \_ = M\; in\; N}) & = \mathcal{C}(\mathtt{M});\; \texttt{LET};\; \mathcal{T}(\mathtt{N}) \\
-    \mathcal{T}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M}); \mathcal{C}(\mathtt{N});\; \mathtt{TAP} \\
+    \mathcal{T}(\mathtt{M\; N}) &= \mathcal{C}(\mathtt{M});\; \mathcal{C}(\mathtt{N});\; \mathtt{TAP} \\
     \mathcal{T}(a) &= \mathcal{C}(a);\; \texttt{RTN}
 \end{aligned}
 \]
@@ -226,23 +226,27 @@ to push a new closure onto the stack.
         \hline
         \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
         \hline
-        TAP : \(c\) & \( e \) & \( v \) : Clos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : \( e' \) & \( s \) \\
-        TAP : \(c\) & \( e \) & \( v \) : VFixClos(\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos(\( c' , e' \)) : \( e' \) & \( s \) \\
-        TAP : \(c\) & \( e \) & \( v \) : VFixCClos(\( c' , e' \)) : \( s \) & \( c' \) & VFixClos(\( c' , e' \)) : \( e' \) & \( s \) \\
+        TAP : \(c\) & \( e \) & \( v \) : Clos (\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : \( e' \) & \( s \) \\
+        TAP : \(c\) & \( e \) & \( v \) : VFixClos (\( c' , e' \)) : \( s \) & \( c' \) & \( v \) : VFixClos (\( c' , e' \)) : \( e' \) & \( s \) \\
+        TAP : \(c\) & \( e \) & \( v \) : VFixCClos (\( c' , e' \)) : \( s \) & \( c' \) & VFixClos (\( c' , e' \)) : \( e' \) & \( s \) \\
         \hline
     \end{tabular}
     \caption{TAP Machine Transitions}
 \end{table}
 
-Let's compare the difference between our tail optimized compiler, and our last compiler definition. Specifically, let's look
-at the number of items on the stack for an evaluation of the \texttt{fact 42 1} term above:
+\newpage
+
+Table \ref{table:stacks} explores the differences between our tail optimized compiler, and our last compiler definition. Specifically, it looks
+at the maximum number of items on the stack for an evaluation of the \texttt{fact 42 1} term above.
+
+You can see how this scales exponentially.
 
 \begin{table}[h]
     \centering
     \small
     \begin{tabular}{|r||c|c|}
         \hline
-        Step \# & Non-Tail & Tail \\
+        Step \# & Non-TO & TO \\
         \hline \hline
         ... & ... & ... \\
         \hline
@@ -269,7 +273,6 @@ at the number of items on the stack for an evaluation of the \texttt{fact 42 1} 
         645 & 1 & 0 \\
         \hline
     \end{tabular}
-    \caption{Stack Sizes for Non-Tail and Tail Calls}
+    \caption{Stack Sizes: Non-Tail optimized (Non-TO) vs. Tail optimized (TO)}
+    \label{table:stacks}
 \end{table}
-
-You can see how this scales exponentially.

@@ -32,7 +32,7 @@ data Instr
 
 And a new compilation rule.
 
-\[ \mathcal{C}((M, N)) = \mathcal{C}(M);\; \mathcal{C}(N);\; \texttt{TUP} \]
+\[ \mathcal{C}((M,\; N)) = \mathcal{C}(M);\; \mathcal{C}(N);\; \texttt{TUP} \]
 
 Now that we have a way to construct tuples, we also need a way to destruct them. We can extend our language
 with a "unary operation" construct, and encode \texttt{fst} and \texttt{snd} with it. We also need the corresponding
@@ -66,15 +66,15 @@ We are pretty much done! We just need to define how the interpreter will handle 
         \hline
         \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
         \hline
-        TUP : \(c\) & \( e \) & \( v_2 \) : \( v_1 \) : \( s \) & \( c \) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) \\
-        FST : \(c\) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_1 \) : \( s \) \\
-        SND : \(c\) & \( e \) & VTuple(\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_2 \) : \( s \) \\
+        TUP : \(c\) & \( e \) & \( v_2 \) : \( v_1 \) : \( s \) & \( c \) & \( e \) & VTuple (\( v_1, v_2 \)) : \( s \) \\
+        FST : \(c\) & \( e \) & VTuple (\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_1 \) : \( s \) \\
+        SND : \(c\) & \( e \) & VTuple (\( v_1, v_2 \)) : \( s \) & \( c \) & \( v \) : \( e \) & \( v_2 \) : \( s \) \\
         \hline
     \end{tabular}
     \caption{Tuple Machine Transitions}
 \end{table}
 
-\subsection{Untyped Variants}
+\subsection{Basic Variants}
 
 Variants are a type of data structure that can represent one of several possible values,
 each tagged with a unique constructor. We should be able to match on each constructor individually - this is the destructor of variants.
@@ -108,11 +108,11 @@ data Instr
 Compilation is a bit harder for the match case, 
 we have to use some list magic and compile the inner expressions of the branches.
 
-\[ \mathcal{C}(\texttt{Variant (Name, E)}) = \mathcal{C}(E);\; \texttt{VARIANT Name} \]
-\[ \mathcal{C}(\texttt{match E with branches}) = \mathcal{C}(E);\; \texttt{MATCH branches'} \]
+\[ \mathcal{C}(\texttt{Variant (Name, E)}) = \mathcal{C}(\texttt{E});\; \texttt{VARIANT Name} \]
+\[ \mathcal{C}(\texttt{match E with branches}) = \mathcal{C}(\texttt{E});\; \texttt{MATCH branches'} \]
 \[  \texttt{where branches'} = map\; (\lambda (\texttt{name},\; \texttt{branch}) \to (\texttt{name},\; \mathcal{C}(\texttt{branch})))\; \texttt{branches} \]
 
-Now, the fun part! Interpreting is quite easy, the interesting case is for the \texttt{match} expression:
+Interpreting is quite easy, the interesting case is for the \texttt{match} expression:
 
 \begin{table}[h]
     \centering
@@ -123,8 +123,8 @@ Now, the fun part! Interpreting is quite easy, the interesting case is for the \
         \hline
         \textbf{Code} & \textbf{Env} & \textbf{Stack} & \textbf{Code} & \textbf{Env} & \textbf{Stack} \\
         \hline
-        VARIANT name : \(c\) & \( e \) & \( v \) : \( s \) & \( c \) & \( e \) & VVariant(\( name, v \)) : \( s \) \\
-        MATCH branches : \(c\) & \( e \) & VVariant \( name, v \) : \( s \) & branches \( !! \) name : \( c \) & \( v \) : \( e \) & \( s \) \\
+        VARIANT name : \(c\) & \( e \) & \( v \) : \( s \) & \( c \) & \( e \) & VVariant (\( name,\; v \)) : \( s \) \\
+        MATCH branches : \(c\) & \( e \) & VVariant \( name,\; v \) : \( s \) & branches \( !! \) name : \( c \) & \( v \) : \( e \) & \( s \) \\
         \hline
     \end{tabular}
     \caption{Variant Machine Transitions}
@@ -133,26 +133,29 @@ Now, the fun part! Interpreting is quite easy, the interesting case is for the \
 The operator \( !! \) is the lookup operation for lists. If we find the name of the constructor 
 we are matching for in the association list, then we execute the code relevant to that branch.
 If we don't find a match, then we should exit with an error, warning the user that the pattern-match they wrote was 
-not extensive.
+not extensive, or that they gave an erroneous name for a constructor.
 
 We can now encode lists, peano numbers, and a whole lot more in our language. The combination of tuples and variants
 is extremely expressive!
 
-As this is quite a bit abstract, I urge you to check the tests in CITE APPENDIX for a better intuition.
+As this is quite a bit abstract, I urge you to check the tests in the implementation of this interpreter \href{https://github.com/zazedd/secd/blob/main/src/Modern.hs}{hosted on GitHub} for a better intuition.
 
 \subsubsection{Why both Tuples and Variants}
 
-While it is true that we can encode tuples using variants, I personally found that having
-an abstraction specifically for tuples in our language is a lot nicer than having to write something like this
-to encode a pair:
+In general, you are able to implement tuples using variants easily in other languages.
+However, our implementation of variants holds just one expression value. For a tuple, you need two (or more).
 
-\begin{lstlisting}
-let pair = Variant "Pair" (Variant "First" (Int 3), Variant "Second" (Int 5))
+It is a fundamental problem that our variants have, a more advanced implementation will take into consideration
+carrying more than one piece of information simultaneously.
+
+But regular programming languages generally support tuples by default, and with them,
+our implementation of variants is complete in that sense. We can now represent almost anything with our variants!
+
+For example, here is a representation of pairs using variants and tuples:
+\begin{lstlisting}[mathescape]
+let pair = $\lambda a \to \lambda b \to$ Variant ("Pair", (Variant ("fst", a), Variant ("snd", b)))
+let fst_pair = $\lambda p \to $ match p with | "Pair" pair $\Rightarrow$ (match (fst pair) with | "fst" a $\Rightarrow$ a)
 \end{lstlisting}
-
-As it stands, to write functions that operate on this pair, you would have to write two match expressions.
-This is just a bit cumbersome, and for the purposes of this paper, it was also a good opportunity to show how easy
-tuples are to implement.
 
 \subsubsection{Encoding Records with Variants}
 
@@ -164,7 +167,7 @@ As a side note, variants can be used to implement records, they can be seen as t
 
 So, if we "invert" a variant, we should get something that behaves like a record.
 
-We can encode records using variants like so (CITE Principles of Programming Languages):
+We can encode records using variants like so \cite{HarperPL}:
 \[
 \{l_1 = e_1; \dots; l_n = e_n\} = 
 (\lambda k_1 \to \dots \lambda k_n \to \lambda s \to 
@@ -180,4 +183,4 @@ We can encode records using variants like so (CITE Principles of Programming Lan
 e.l_k = e \;\; 'l_k(0)
 \]
 
-A bit complicated, but it works! See (CITE Principles of Programming Languages) for further explanation.
+A bit complicated, but it works! See the Principles of Programming Languages book by Robert Harper \cite{HarperPL} for further explanation.

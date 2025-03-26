@@ -1,3 +1,14 @@
 \section{Conclusions}
 The code is online at \href{https://github.com/zazedd/secd}{github.com/zazedd/secd}.
-We’ve outlined the structure and operation of the SECD Machine, from its data handling and instruction set to its compilation and interpretation processes. By implementing optimizations like streamlined let declarations, stack-dump unification, and tail call optimization, we improve both performance and memory efficiency. Additionally, extensions such as tuple support and untyped variants enhance the machine’s versatility. These improvements demonstrate how the SECD Machine can evolve to support more complex language features while maintaining its core simplicity.
+
+We’ve taken a deep dive into the SECD Machine, 
+breaking down its structure, instruction set, and execution model. 
+Along the way, we introduced optimizations that make it a bit more efficient, 
+such as smarter \texttt{let} handling, combining the stack and the dump, 
+and implementing tail call optimization to avoid stack overflows.
+On top of that, we expanded the language's capabilities with features like tuples and basic variants, 
+making the machine way more expressive, with little effort.
+
+Ultimately, this work shows how the SECD Machine, despite its age, 
+can be modernized and adapted to handle more complex language features 
+while keeping things simple and elegant. 
