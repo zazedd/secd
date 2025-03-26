@@ -79,6 +79,11 @@ compileNonTail ex = c ex ++ [HALT]
     FixP (Abs e) -> [FIXC (c e ++ [RTN])]
     FixP _ -> fail "invalid fixpoint"
     Tup a b -> c a ++ c b ++ [TUP]
+    Variant (tag, e) -> c e ++ [VARIANT tag]
+    Match (vic, alts) ->
+      let vic' = c vic
+          branches = map (\(name, branch) -> (name, c branch)) alts
+       in vic' ++ [MATCH branches]
 
 -- Variant (name, e) -> c e ++ [VARIANT name]
 -- Match (e, with) ->
@@ -326,5 +331,5 @@ main = do
   forM_ tests $
     \a -> do
       print a
-      -- print (eval 0 (makeCES (compileNonTail a)))
+      print (eval 0 (makeCES (compileNonTail a)))
       print (compile a >>= \c -> return $ eval 0 (makeCES c))
