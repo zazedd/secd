@@ -41,7 +41,7 @@ library debruijn
 
 executable normal
     import:           warnings
-    main-is:          Main.hs
+    main-is:          Normal.hs
     build-depends:    base, lang, containers, mtl
     hs-source-dirs:   src
     default-language: Haskell2010
