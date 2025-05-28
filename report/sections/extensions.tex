@@ -5,10 +5,10 @@ Tuples are an easy addition to our language.
 We can extend our GADT to support tuples easily, and lets assume \texttt{fun} has been extended to parse 
 tuples as well.
 
-\begin{lstlisting}
+\begin{lstlisting}[mathescape]
 data Expr a where
   ...
-  Tup :: Expr a -> Expr b -> Expr (a, b)
+  Tup :: Expr a $\to$ Expr b $\to$ Expr (a, b)
 \end{lstlisting}
 
 Tuples are akin to values. They can be passed as arguments and returned from functions, so we will need
@@ -38,10 +38,10 @@ Now that we have a way to construct tuples, we also need a way to destruct them.
 with a "unary operation" construct, and encode \texttt{fst} and \texttt{snd} with it. We also need the corresponding
 instructions such that the interpreter can run them.
 
-\begin{lstlisting}
+\begin{lstlisting}[mathescape]
 data Expr a where
   ...
-  Op :: OpE -> Expr a -> Expr a
+  Op :: OpE $\to$ Expr a $\to$ Expr a
   ...
 
 data OpE
@@ -82,11 +82,11 @@ They are also akin to values, just like tuples as before.
 
 A way to encode variants in our language would be to extend the AST with the following:
 
-\begin{lstlisting}
+\begin{lstlisting}[mathescape]
 data Expr a where
   ...
-  Variant :: (String, Expr a) -> Expr a -- (name, expression) creates a variant.
-  Match :: (Expr a, [(String, Expr a)]) -> Expr a -- match the input with a list of constructors;
+  Variant :: (String, Expr a) $\to$ Expr a -- (name, expression) creates a variant.
+  Match :: (Expr a, [(String, Expr a)]) $\to$ Expr a -- match the input with a list of constructors;
                                                   -- "Var 0" will contain the inner expression.
 \end{lstlisting}
 

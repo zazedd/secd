@@ -8,7 +8,7 @@ The BNF of our language is as follows:
 
 <expr> ::= <ident>
 \alt <int>
-\alt `\lambda' <ident> `->' <expr>
+\alt `\lambda' <ident> `\to' <expr>
 \alt <expr> <expr>
 \alt `let' <ident> `=' <expr> `in' <expr>
 \alt <expr> <bop> <expr>
@@ -30,69 +30,19 @@ For the implementation, instead of using identifiers, we use De Bruijn indexing 
 The datatype of our language is defined with a GADT that captures the return type
 of each constructor definition:
 
-\begin{lstlisting}
+\begin{lstlisting}[mathescape]
 data Expr a where
-  Var :: Int -> Expr a
-  Int :: Int -> Expr Int
-  Abs :: Expr b -> Expr (a -> b)
-  App :: Expr (a -> b) -> Expr a -> Expr b
-  Let :: Expr a -> Expr b -> Expr b
-  Bop :: BopE -> Expr Int -> Expr Int -> Expr Int
-  IfZ :: Expr Int -> Expr a -> Expr a -> Expr a
-  FixP :: Expr (a -> a) -> Expr a
+  Var :: Int $\to$ Expr a
+  Int :: Int $\to$ Expr Int
+  Abs :: Expr b $\to$ Expr (a $\to$ b)
+  App :: Expr (a $\to$ b) $\to$ Expr a $\to$ Expr b
+  Let :: Expr a $\to$ Expr b $\to$ Expr b
+  Bop :: BopE $\to$ Expr Int $\to$ Expr Int $\to$ Expr Int
+  IfZ :: Expr Int $\to$ Expr a $\to$ Expr a $\to$ Expr a
+  FixP :: Expr (a $\to$ a) $\to$ Expr a
 
 data BopE
   = Add
   | Mul
   | Sub
 \end{lstlisting}
-
-% fun+ =
-% \begin{grammar}
-%
-% <expr> ::= <ident>
-% \alt <int>
-% \alt `\\' <ident> `->' <expr>
-% \alt <expr> <expr>
-% \alt `let' <ident> `=' <expr> `in' <expr>
-% \alt <expr> <bop> <expr>
-% \alt <op> <expr>
-% \alt `if' <expr> `is 0 then' <expr> `else' <expr>
-% \alt `fix' <expr>
-% \alt `('<expr>`,' <expr>`)'
-%
-% <bop> ::= `+'
-% \alt `*'
-% \alt `-'
-%
-% <op> ::= `fst'
-% \alt `snd'
-%
-% <int> ::= (integer literals, e.g., 0, 1, 2, ...)  
-%
-% <ident> ::= (identifiers, e.g., x, y, foo, ...)  
-%
-% \end{grammar}
-%
-% \begin{lstlisting}
-% data Expr a where
-%   Var :: Int -> Expr a
-%   Int :: Int -> Expr Int
-%   Abs :: Expr b -> Expr (a -> b)
-%   App :: Expr (a -> b) -> Expr a -> Expr b
-%   Let :: Expr a -> Expr b -> Expr b
-%   Bop :: BopE -> Expr Int -> Expr Int -> Expr Int
-%   Op :: OpE -> Expr a -> Expr a
-%   IfZ :: Expr Int -> Expr a -> Expr a -> Expr a
-%   FixP :: Expr (a -> a) -> Expr a
-%   Tup :: Expr a -> Expr b -> Expr (a, b)
-%
-% data BopE
-%   = Add
-%   | Mul
-%   | Sub
-%
-% data OpE
-%   = Fst
-%   | Snd
-% \end{lstlisting}
